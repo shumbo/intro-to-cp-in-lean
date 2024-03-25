@@ -38,260 +38,151 @@ example := SimpleProc.send Name.charlie SimpleProc.done
 
 -- ## Networks
 
-structure SimpNet (α : Type) [DecidableEq α] where
-  names : Finset α
-  processes (n : α) : Option (SimpleProc (α := α))
-  h : ∀ n : α, n ∈ names → Option.isSome (processes n)
+def SimpleNet (α : Type) [DecidableEq α] := α → SimpleProc (α := α)
+def SimpleNet.supp {α : Type} [DecidableEq α] (N: SimpleNet α) : Set α := setOf (λ n => N n ≠ SimpleProc.done)
 
-def SimpNet.empty {α : Type} [DecidableEq α] : SimpNet α := SimpNet.mk
-  Finset.empty
-  (λ _ => Option.none)
-  (λ n h => by cases h)
-
-@[simp]
-def SimpNet.update {α : Type} [DecidableEq α] (N : SimpNet α) (name : α) (proc : SimpleProc (α := α)) : SimpNet α := SimpNet.mk
-  (insert name N.names)
-  (λ n => if n = name then proc else N.processes n)
-  (by
-    intros n h
-    by_cases n = name
-    {
-      simp [*]
-    }
-    {
-      rename_i n_neq_name
-      have := Finset.mem_of_mem_insert_of_ne h n_neq_name
-      simp [n_neq_name]
-      have := N.h n this
-      exact this
-    }
-  )
-
-@[simp]
-def SimpNet.get {α : Type} [DecidableEq α] (N : SimpNet α) (name : α) (mem : name ∈ N.names) : SimpleProc (α := α) :=
-  if h : Option.isSome (N.processes name) then
-    (N.processes name).get h
-  else by
-    have := N.h name mem
+instance {α : Type} [DecidableEq α] (n : α) (N : SimpleNet α) : Decidable (n ∈ SimpleNet.supp N) := by
+  unfold SimpleNet.supp
+  by_cases N n = SimpleProc.done
+  {
+    apply isFalse
+    intro h
     contradiction
+  }
+  {
+    apply isTrue
+    simp
+    assumption
+  }
 
-
+def SimpleNet.terminated {α : Type} [DecidableEq α] : SimpleNet α := λ _ => SimpleProc.done
 
 @[simp]
-def Alice : PName := "Alice"
-@[simp]
-def Bob : PName := "Bob"
+def SimpleNet.update {α : Type} [DecidableEq α] (N: SimpleNet α) (name : α) (proc : SimpleProc (α := α)) : SimpleNet α := λ n => if h: n = name then proc else N n
 
-def supp {α : Type} [DecidableEq α] (N : SimpNet α) : Finset α := N.names.filter (λ p => if h : p ∈ N.names then N.get p h ≠ SimpleProc.done else false)
+abbrev simple_net_demo : SimpleNet Name := (SimpleNet.terminated.update Name.alice (SimpleProc.send Name.bob SimpleProc.done))
 
-@[simp]
-def sn : SimpNet Name := (SimpNet.empty.update
-  Name.alice (SimpleProc.send Name.bob SimpleProc.done)
-  ).update Name.bob SimpleProc.done
+example : Name.alice ∈ (SimpleNet.supp simple_net_demo) := by
+  unfold SimpleNet.supp
+  simp [simple_net_demo, SimpleNet.terminated]
 
-example : Name.alice ∈ (supp sn) := by
-  simp [supp, SimpNet.update, SimpNet.get]
-
-example : Name.bob ∉ (supp sn) := by
-  intro c
-  simp [supp, SimpNet.update, SimpNet.get] at c
+example : Name.bob ∉ (SimpleNet.supp simple_net_demo) := by
+  unfold SimpleNet.supp
+  simp [simple_net_demo, SimpleNet.terminated]
 
 
-theorem SimpNet.supp_subset {α : Type} [DecidableEq α] (N : SimpNet α) : supp N ⊆ N.names := by
-  simp [supp]
+def SimpleNet.parallel {α : Type} [DecidableEq α] (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)) : SimpleNet α := λ p => if p ∈ SimpleNet.supp N then N p else M p
 
-theorem SimpNet.mem_supp_mem {α : Type} [DecidableEq α] {a : α} (N: SimpNet α) : (a ∈ supp N) → a ∈ N.names := by
+example : SimpleNet Name := SimpleNet.parallel
+  (SimpleNet.terminated.update Name.buyer (SimpleProc.send Name.seller (SimpleProc.receive Name.seller SimpleProc.done)))
+  (SimpleNet.terminated.update Name.bob (SimpleProc.receive Name.buyer (SimpleProc.send Name.buyer SimpleProc.done)))
+  (by
+    simp [SimpleNet.supp, SimpleNet.terminated, Finset.empty]
+  )
+
+theorem SimpleNet.mem_supp_running {α : Type} [DecidableEq α] {N : SimpleNet α} {p : α} : p ∈ SimpleNet.supp N → N p ≠ SimpleProc.done := by
   intro h
-  have := SimpNet.supp_subset N
-  exact Finset.mem_of_subset this h
+  intro c
+  unfold SimpleNet.supp at h
+  contradiction
 
+theorem SimpleNet.nmem_supp_terminated {α : Type} [DecidableEq α] {N : SimpleNet α} {p : α} : p ∉ SimpleNet.supp N → N p = SimpleProc.done := by
+  intro h
+  unfold supp at h
+  have := Set.nmem_setOf_iff.mp h
+  simp at this
+  exact this
 
-def SimpNet.parallel {α : Type} [DecidableEq α] (N M : SimpNet α) (h : Disjoint (supp N) (supp M)) : SimpNet α := SimpNet.mk
-  ((supp N) ∪ (supp M))
-  (λ n => if n ∈ supp N then N.processes n else if n ∈ supp M then M.processes n else none)
-  (by
-    intro n n_mem
-    have := Finset.mem_union.mp n_mem
-    cases this
-    {
-      rename_i n_in_N
-      simp [n_in_N]
-      have := SimpNet.supp_subset N
-      have := Finset.mem_of_subset this n_in_N
-      exact N.h n this
-    }
-    {
-      rename_i n_in_M
-      simp [n_in_M]
-      have : n ∉ supp N := by
-        intro c
-        have := Finset.disjoint_iff_ne.mp h n c n n_in_M
-        contradiction
-      by_cases n ∈ N.names
-      {
-        simp [this]
-        have := M.h n
-        apply this
-        apply SimpNet.mem_supp_mem
-        assumption
-      }
-      {
-        simp [this]
-        have := SimpNet.supp_subset M
-        have := Finset.mem_of_subset this n_in_M
-        exact M.h n this
-      }
-    }
-  )
-
-example : SimpNet Name := SimpNet.parallel
-  SimpNet.empty
-  SimpNet.empty
-  (by
-    simp [supp, SimpNet.empty, Finset.empty]
-  )
-
-example : SimpNet Name := SimpNet.parallel
-  (SimpNet.empty.update Name.buyer (SimpleProc.send Name.seller (SimpleProc.receive Name.seller SimpleProc.done)))
-  (SimpNet.empty.update Name.bob (SimpleProc.receive Name.buyer (SimpleProc.send Name.buyer SimpleProc.done)))
-  (by
-    simp [supp, SimpNet.empty, Finset.empty]
-  )
-
--- Proposition 3.2
-
-theorem Finset.disjoint_mem {α : Type u} (a : α) {s : Finset α} {t : Finset α} {h : Disjoint s t} : a ∈ s → a ∉ t := by
-  intro a_in_s
-  have := Finset.disjoint_left.mp h
-  apply this
-  assumption
-
-theorem SimpNet.mem_supp_get_proc {α : Type} [DecidableEq α] (N : SimpNet α) : ∀ (n : α) (h : n ∈ supp N), N.get n (SimpNet.supp_subset N h) ≠ SimpleProc.done := by
-  intros n n_in_supp_N
-  simp [supp] at n_in_supp_N
-  let ⟨n_in_N, n_not_done⟩ := n_in_supp_N
-  simp [n_in_N] at n_not_done
-  have := N.h n n_in_N
-  simp [this] at n_not_done
-  unfold get
-  simp [this]
-  assumption
-
-theorem SimpNet.supp_parallel_supp_union {α : Type} [DecidableEq α]: ∀ (N M : SimpNet α) (h : Disjoint (supp N) (supp M)), supp (parallel N M h) = supp N ∪ supp M := by
-  intros N M h
-  apply Finset.ext
-  intro n
+theorem SimpleNet.supp_parallel_supp_union {α : Type} [DecidableEq α]: ∀ (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)), SimpleNet.supp (SimpleNet.parallel N M h) = SimpleNet.supp N ∪ SimpleNet.supp M := by
+  intro N M h
+  apply Set.ext
+  simp
+  intro p
   constructor
   {
-    intro n_mem_supp_par
-    have p := SimpNet.supp_subset (parallel N M h)
-    have : (parallel N M h).names = supp N ∪ supp M := by
-      simp [supp, SimpNet.parallel]
-    rw [this] at p
-    exact Finset.mem_of_subset p n_mem_supp_par
+    intro p_in_supp_par
+    by_cases p ∈ SimpleNet.supp N
+    {
+      rename_i p_in_supp_N
+      left
+      assumption
+    }
+    {
+      rename_i p_not_in_supp_N
+      unfold supp parallel at p_in_supp_par
+      simp at p_in_supp_par
+      simp [p_not_in_supp_N] at p_in_supp_par
+      right
+      unfold supp
+      simp
+      assumption
+    }
   }
   {
-    intro n_mem_supp_union
-    have := Finset.mem_union.mp n_mem_supp_union
-    cases this
+    intro p_in_supp
+    cases p_in_supp
     {
-      -- n ∈ supp N
-      rename_i n_mem_supp_N
-      have := Finset.disjoint_left.mp h n_mem_supp_N
-      have p₁: (parallel N M h).processes n = N.processes n := by
-        simp [parallel]
-        intro h
-        have := Finset.mem_of_subset (SimpNet.supp_subset N) n_mem_supp_N
-        contradiction
-      have n_in_N : n ∈ N.names := by
-        have := SimpNet.supp_subset N
-        exact Finset.mem_of_subset this n_mem_supp_N
-      have n_not_done : N.get n n_in_N ≠ SimpleProc.done := by
-        apply SimpNet.mem_supp_get_proc
-        assumption
-      simp [supp, n_in_N, p₁]
-      have : n ∈ (parallel N M h).names := by
-        unfold parallel
-        simp
-        apply Or.inl
-        exact n_mem_supp_N
-      constructor
-      {
-        assumption
-      }
-      {
-        simp [this]
-        intro c
-        have h₂ : Option.isSome (N.processes n) := by
-          apply N.h n n_in_N
-        simp [h₂] at c
-        unfold get at n_not_done
-        simp [h₂] at n_not_done
-        contradiction
-      }
+      rename_i p_in_supp_N
+      unfold parallel
+      unfold supp ; simp
+      intro c
+      have := SimpleNet.mem_supp_running p_in_supp_N
+      simp [this] at c
     }
     {
-      -- n ∈ supp M
-      rename_i n_mem_supp_M
-      have n_not_mem_supp_N := Finset.disjoint_right.mp h n_mem_supp_M
-      have p₁: (parallel N M h).processes n = M.processes n := by
-        rw [parallel]
-        simp [n_mem_supp_M]
-        intro h
-        contradiction
-      have n_in_M : n ∈ M.names := by apply SimpNet.mem_supp_mem ; assumption
-      have n_not_done : M.get n n_in_M ≠ SimpleProc.done := by
-        apply SimpNet.mem_supp_get_proc
-        assumption
-      simp [supp, n_in_M, p₁]
-      constructor
-      {
-        assumption
-      }
-      {
-        have : n ∈ (parallel N M h).names := by
-          unfold parallel
-          simp
-          apply Or.inr
-          assumption
-        simp [this]
-        intro c
-        have h₂ : Option.isSome (M.processes n) := by apply M.h n n_in_M
-        simp [h₂] at c
-        unfold get at n_not_done
-        simp [h₂] at n_not_done
-        contradiction
-      }
+      rename_i p_in_supp_M
+      have := Set.disjoint_right.mp h p_in_supp_M
+      unfold parallel supp
+      simp
+      intro c
+      have := SimpleNet.nmem_supp_terminated this
+      simp [this] at c
+      have := SimpleNet.mem_supp_running p_in_supp_M
+      contradiction
     }
   }
 
-def sn' : SimpNet Name := (SimpNet.empty.update
-  Name.bob SimpleProc.done
-  ).update Name.alice (SimpleProc.send Name.bob SimpleProc.done)
-
-example : sn = sn' := by
-  unfold sn
-  unfold sn'
+theorem SimpleNet.ident {α : Type} [DecidableEq α] {N : SimpleNet α} : SimpleNet.parallel N (SimpleNet.terminated) (by simp [supp, terminated]) = N := by
+  unfold parallel
   simp
-  constructor
+  funext p
+  by_cases p ∈ supp N
   {
-    apply Finset.Insert.comm
+    rename_i p_in_supp_N
+    simp [p_in_supp_N]
   }
   {
-    funext n
-    by_cases n = Name.bob
-    {
-      rename_i n_is_bob
-      simp [n_is_bob]
-    }
-    {
-      rename_i n_is_not_bob
-      simp [n_is_not_bob]
-    }
+    rename_i p_nmem_supp_N
+    simp [p_nmem_supp_N]
+    simp [terminated]
+    apply Eq.symm
+    apply SimpleNet.nmem_supp_terminated
+    assumption
   }
 
-theorem SimpNet.empty_supp_empty {α : Type} [DecidableEq α] : supp SimpNet.empty (α := α) = Finset.empty := by
-  unfold supp
-  unfold SimpNet.empty
-  simp
-  apply Finset.filter_empty
+theorem SimpleNet.comm {α : Type} [DecidableEq α] {N M : SimpleNet α} {h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)} : SimpleNet.parallel N M h = SimpleNet.parallel M N (disjoint_comm.mp h) := by
+  funext p
+  unfold parallel
+  by_cases p ∈ supp N
+  {
+    rename_i p_mem_supp_N
+    simp [p_mem_supp_N]
+    have := Set.disjoint_left.mp h p_mem_supp_N
+    simp [this]
+  }
+  {
+    rename_i p_nmem_supp_N
+    simp [p_nmem_supp_N]
+    by_cases p ∈ supp M
+    {
+      rename_i p_mem_supp_M
+      simp [p_mem_supp_M]
+    }
+    {
+      rename_i p_nmem_supp_M
+      simp [*]
+      have h₁ := SimpleNet.nmem_supp_terminated p_nmem_supp_M
+      have h₂ := SimpleNet.nmem_supp_terminated p_nmem_supp_N
+      simp [h₁, h₂]
+    }
+  }
