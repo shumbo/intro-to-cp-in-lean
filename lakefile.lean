@@ -4,8 +4,12 @@ open Lake DSL
 package «intro-to-cp» where
   -- add package configuration options here
 
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4.git"@"v4.6.0-rc1"
+
 lean_lib «IntroToCp» where
   -- add library configuration options here
+
 
 @[default_target]
 lean_exe «intro-to-cp» where
