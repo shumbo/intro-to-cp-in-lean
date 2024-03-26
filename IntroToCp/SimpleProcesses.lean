@@ -186,3 +186,46 @@ theorem SimpleNet.comm {α : Type} [DecidableEq α] {N M : SimpleNet α} {h : Di
       simp [h₁, h₂]
     }
   }
+
+theorem SimpleNet.assoc {α : Type} [DecidableEq α]
+  {N₁ N₂ N₃ : SimpleNet α}
+  {h₁ : Disjoint (SimpleNet.supp N₁) (SimpleNet.supp N₂)}
+  {h₂ : Disjoint (SimpleNet.supp N₂) (SimpleNet.supp N₃)}
+  {h₃ : Disjoint (SimpleNet.supp N₃) (SimpleNet.supp N₁)}
+    : SimpleNet.parallel N₁ (SimpleNet.parallel N₂ N₃ h₂) (by {
+        have := SimpleNet.supp_parallel_supp_union N₂ N₃ h₂
+        simp [this]
+        constructor
+        exact h₁
+        exact disjoint_comm.mp h₃
+      })
+        =
+      SimpleNet.parallel (SimpleNet.parallel N₁ N₂ h₁) N₃ (by {
+        have := SimpleNet.supp_parallel_supp_union N₁ N₂ h₁
+        simp [this]
+        constructor
+        exact disjoint_comm.mp h₃
+        exact h₂
+      }) := by
+        funext p
+        by_cases p ∈ supp N₁
+        {
+          rename_i p_mem_supp_N₁
+          simp [parallel]
+          simp [SimpleNet.supp_parallel_supp_union]
+          simp [p_mem_supp_N₁]
+        }
+        {
+          rename_i p_nmem_supp_N₁
+          simp [parallel, p_nmem_supp_N₁]
+          by_cases p ∈ supp N₂
+          {
+            rename_i p_mem_supp_N₂
+            simp [SimpleNet.supp_parallel_supp_union]
+            simp [p_mem_supp_N₂]
+          }
+          {
+            rename_i p_nmem_supp_N₂
+            simp [p_nmem_supp_N₂, SimpleNet.supp_parallel_supp_union, p_nmem_supp_N₁]
+          }
+        }
