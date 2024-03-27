@@ -57,6 +57,8 @@ instance {α : Type} [DecidableEq α] (n : α) (N : SimpleNet α) : Decidable (n
 
 def SimpleNet.terminated {α : Type} [DecidableEq α] : SimpleNet α := λ _ => SimpleProc.done
 
+def SimpleNet.atomic {α : Type} [DecidableEq α] (p : α) (proc : SimpleProc (α := α)) : SimpleNet α := λ x => if p = x then proc else SimpleProc.done
+
 @[simp]
 def SimpleNet.update {α : Type} [DecidableEq α] (N: SimpleNet α) (name : α) (proc : SimpleProc (α := α)) : SimpleNet α := λ n => if h: n = name then proc else N n
 
@@ -229,3 +231,19 @@ theorem SimpleNet.assoc {α : Type} [DecidableEq α]
             simp [p_nmem_supp_N₂, SimpleNet.supp_parallel_supp_union, p_nmem_supp_N₁]
           }
         }
+
+-- Proposition 3.5 (Exercise 3.4)
+theorem SimpleNet.parallel_atomic_terminated {α : Type} [DecidableEq α] (N : SimpleNet α) (p : α) :
+    SimpleNet.parallel N (SimpleNet.atomic p SimpleProc.done) (by simp [atomic, supp]) = N := by
+      funext name
+      by_cases name ∈ supp N
+      {
+        rename_i name_mem_supp_N
+        simp [parallel, name_mem_supp_N]
+      }
+      {
+        rename_i name_nmem_supp_N
+        simp [parallel, name_nmem_supp_N]
+        have := SimpleNet.nmem_supp_terminated name_nmem_supp_N
+        simp [this, atomic]
+      }
