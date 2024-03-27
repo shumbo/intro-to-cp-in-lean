@@ -8,10 +8,12 @@ import «IntroToCp».Maps
 
 -- ## Syntax
 
-inductive SimpleProc {α : Type} where
+variable {α : Type} [DecidableEq α]
+
+inductive SimpleProc (α : Type) where
   | done
-  | send (dst : α) (cont : SimpleProc (α := α))
-  | receive (src : α) (cont : SimpleProc (α := α))
+  | send (dst : α) (cont : SimpleProc α)
+  | receive (src : α) (cont : SimpleProc α)
 deriving Repr, DecidableEq
 
 inductive Name where
@@ -20,6 +22,9 @@ inductive Name where
   | charlie : Name
   | buyer : Name
   | seller : Name
+  | client : Name
+  | gateway : Name
+  | server : Name
 deriving Repr, DecidableEq
 
 -- Example 3.2
@@ -38,8 +43,8 @@ example := SimpleProc.send Name.charlie SimpleProc.done
 
 -- ## Networks
 
-def SimpleNet (α : Type) [DecidableEq α] := α → SimpleProc (α := α)
-def SimpleNet.supp {α : Type} [DecidableEq α] (N: SimpleNet α) : Set α := setOf (λ n => N n ≠ SimpleProc.done)
+def SimpleNet (α : Type) [DecidableEq α] := α → SimpleProc α
+def SimpleNet.supp (N: SimpleNet α) : Set α := setOf (λ n => N n ≠ SimpleProc.done)
 
 instance {α : Type} [DecidableEq α] (n : α) (N : SimpleNet α) : Decidable (n ∈ SimpleNet.supp N) := by
   unfold SimpleNet.supp
@@ -55,12 +60,12 @@ instance {α : Type} [DecidableEq α] (n : α) (N : SimpleNet α) : Decidable (n
     assumption
   }
 
-def SimpleNet.terminated {α : Type} [DecidableEq α] : SimpleNet α := λ _ => SimpleProc.done
+def SimpleNet.terminated  : SimpleNet α := λ _ => SimpleProc.done
 
-def SimpleNet.atomic {α : Type} [DecidableEq α] (p : α) (proc : SimpleProc (α := α)) : SimpleNet α := λ x => if p = x then proc else SimpleProc.done
+def SimpleNet.atomic  (p : α) (proc : SimpleProc α) : SimpleNet α := λ x => if p = x then proc else SimpleProc.done
 
 @[simp]
-def SimpleNet.update {α : Type} [DecidableEq α] (N: SimpleNet α) (name : α) (proc : SimpleProc (α := α)) : SimpleNet α := λ n => if h: n = name then proc else N n
+def SimpleNet.update (N: SimpleNet α) (name : α) (proc : SimpleProc α) : SimpleNet α := λ n => if h: n = name then proc else N n
 
 abbrev simple_net_demo : SimpleNet Name := (SimpleNet.terminated.update Name.alice (SimpleProc.send Name.bob SimpleProc.done))
 
@@ -73,7 +78,7 @@ example : Name.bob ∉ (SimpleNet.supp simple_net_demo) := by
   simp [simple_net_demo, SimpleNet.terminated]
 
 
-def SimpleNet.parallel {α : Type} [DecidableEq α] (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)) : SimpleNet α := λ p => if p ∈ SimpleNet.supp N then N p else M p
+def SimpleNet.parallel (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)) : SimpleNet α := λ p => if p ∈ SimpleNet.supp N then N p else M p
 
 example : SimpleNet Name := SimpleNet.parallel
   (SimpleNet.terminated.update Name.buyer (SimpleProc.send Name.seller (SimpleProc.receive Name.seller SimpleProc.done)))
@@ -82,20 +87,20 @@ example : SimpleNet Name := SimpleNet.parallel
     simp [SimpleNet.supp, SimpleNet.terminated, Finset.empty]
   )
 
-theorem SimpleNet.mem_supp_running {α : Type} [DecidableEq α] {N : SimpleNet α} {p : α} : p ∈ SimpleNet.supp N → N p ≠ SimpleProc.done := by
+theorem SimpleNet.mem_supp_running {N : SimpleNet α} {p : α} : p ∈ SimpleNet.supp N → N p ≠ SimpleProc.done := by
   intro h
   intro c
   unfold SimpleNet.supp at h
   contradiction
 
-theorem SimpleNet.nmem_supp_terminated {α : Type} [DecidableEq α] {N : SimpleNet α} {p : α} : p ∉ SimpleNet.supp N → N p = SimpleProc.done := by
+theorem SimpleNet.nmem_supp_terminated {N : SimpleNet α} {p : α} : p ∉ SimpleNet.supp N → N p = SimpleProc.done := by
   intro h
   unfold supp at h
   have := Set.nmem_setOf_iff.mp h
   simp at this
   exact this
 
-theorem SimpleNet.supp_parallel_supp_union {α : Type} [DecidableEq α]: ∀ (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)), SimpleNet.supp (SimpleNet.parallel N M h) = SimpleNet.supp N ∪ SimpleNet.supp M := by
+theorem SimpleNet.supp_parallel_supp_union: ∀ (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)), SimpleNet.supp (SimpleNet.parallel N M h) = SimpleNet.supp N ∪ SimpleNet.supp M := by
   intro N M h
   apply Set.ext
   simp
@@ -144,7 +149,7 @@ theorem SimpleNet.supp_parallel_supp_union {α : Type} [DecidableEq α]: ∀ (N 
     }
   }
 
-theorem SimpleNet.ident {α : Type} [DecidableEq α] {N : SimpleNet α} : SimpleNet.parallel N (SimpleNet.terminated) (by simp [supp, terminated]) = N := by
+theorem SimpleNet.ident {N : SimpleNet α} : SimpleNet.parallel N (SimpleNet.terminated) (by simp [supp, terminated]) = N := by
   unfold parallel
   simp
   funext p
@@ -162,7 +167,7 @@ theorem SimpleNet.ident {α : Type} [DecidableEq α] {N : SimpleNet α} : Simple
     assumption
   }
 
-theorem SimpleNet.comm {α : Type} [DecidableEq α] {N M : SimpleNet α} {h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)} : SimpleNet.parallel N M h = SimpleNet.parallel M N (disjoint_comm.mp h) := by
+theorem SimpleNet.comm {N M : SimpleNet α} {h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)} : SimpleNet.parallel N M h = SimpleNet.parallel M N (disjoint_comm.mp h) := by
   funext p
   unfold parallel
   by_cases p ∈ supp N
@@ -189,7 +194,7 @@ theorem SimpleNet.comm {α : Type} [DecidableEq α] {N M : SimpleNet α} {h : Di
     }
   }
 
-theorem SimpleNet.assoc {α : Type} [DecidableEq α]
+theorem SimpleNet.assoc
   {N₁ N₂ N₃ : SimpleNet α}
   {h₁ : Disjoint (SimpleNet.supp N₁) (SimpleNet.supp N₂)}
   {h₂ : Disjoint (SimpleNet.supp N₂) (SimpleNet.supp N₃)}
@@ -233,7 +238,7 @@ theorem SimpleNet.assoc {α : Type} [DecidableEq α]
         }
 
 -- Proposition 3.5 (Exercise 3.4)
-theorem SimpleNet.parallel_atomic_terminated {α : Type} [DecidableEq α] (N : SimpleNet α) (p : α) :
+theorem SimpleNet.parallel_atomic_terminated (N : SimpleNet α) (p : α) :
     SimpleNet.parallel N (SimpleNet.atomic p SimpleProc.done) (by simp [atomic, supp]) = N := by
       funext name
       by_cases name ∈ supp N
@@ -247,3 +252,42 @@ theorem SimpleNet.parallel_atomic_terminated {α : Type} [DecidableEq α] (N : S
         have := SimpleNet.nmem_supp_terminated name_nmem_supp_N
         simp [this, atomic]
       }
+
+-- ## Semantics
+
+inductive SimpleNet.Step : (SimpleNet α) → (α × α) → (SimpleNet α) → Prop where
+  | comm : ∀ p q P Q {hneq : p ≠ q}, Step
+    (parallel (atomic p (SimpleProc.send q P)) (atomic q (SimpleProc.receive p Q)) (by simp [atomic, supp, hneq]))
+    (p, q)
+    (parallel (atomic p P) (atomic q Q) (by {
+      simp [supp, atomic]
+      by_cases P = SimpleProc.done
+      {
+        rename_i h
+        simp [h]
+      }
+      {
+        rename_i h
+        simp [h]
+        intro c
+        have := c.symm
+        contradiction
+      }
+    }))
+  | par : ∀ N N' M μ {h₁ : Disjoint (supp N) (supp M)} {h₂ : Disjoint (supp N') (supp M)}, Step N μ N' → Step (parallel N M h₁) μ (parallel N' M h₂)
+
+-- example 3.8
+example : SimpleNet.Step
+  (SimpleNet.parallel
+    (SimpleNet.atomic Name.buyer (SimpleProc.send Name.seller $ SimpleProc.receive Name.seller SimpleProc.done))
+    (SimpleNet.atomic Name.seller (SimpleProc.receive Name.buyer $ SimpleProc.send Name.buyer SimpleProc.done))
+    (by simp [SimpleNet.supp, SimpleNet.atomic])
+  )
+  (Name.buyer, Name.seller)
+  (SimpleNet.parallel
+    (SimpleNet.atomic Name.buyer (SimpleProc.receive Name.seller SimpleProc.done))
+    (SimpleNet.atomic Name.seller (SimpleProc.send Name.buyer SimpleProc.done))
+    (by simp [SimpleNet.supp, SimpleNet.atomic])
+  ) := by
+    apply SimpleNet.Step.comm
+    simp
