@@ -77,7 +77,7 @@ def ringProtocol := "Alice" ~> "Bob" ; "Bob" ~> "Charlie" ; "Charlie" ~> "Alice"
 -- Exercise 2.2
 def scatterProtocol := "Alice" ~> "Bob" ; "Alice" ~> "Charlie" ; 𝕆
 
-def pn (s : PName × PName) : Set PName := {s.fst, s.snd}
+def pn (s : α × α) : Set α := {s.fst, s.snd}
 
 #check pn (("Alice", "Bob"))
 

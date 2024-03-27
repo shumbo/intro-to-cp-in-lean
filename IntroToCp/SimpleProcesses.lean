@@ -256,7 +256,7 @@ theorem SimpleNet.parallel_atomic_terminated (N : SimpleNet α) (p : α) :
 -- ## Semantics
 
 inductive SimpleNet.Step : (SimpleNet α) → (α × α) → (SimpleNet α) → Prop where
-  | comm : ∀ p q P Q {hneq : p ≠ q}, Step
+  | comm : ∀ p q P Q (hneq : p ≠ q), Step
     (parallel (atomic p (SimpleProc.send q P)) (atomic q (SimpleProc.receive p Q)) (by simp [atomic, supp, hneq]))
     (p, q)
     (parallel (atomic p P) (atomic q Q) (by {
@@ -291,3 +291,62 @@ example : SimpleNet.Step
   ) := by
     apply SimpleNet.Step.comm
     simp
+
+-- Fundamental Properties of the Semantics
+
+-- proposition 3.7
+theorem SimpleNet.step_nmem_unchange {N N' : SimpleNet α} {μ : (α × α)} {r : α} : Step N μ N' → r ∉ (pn μ) → N r = N' r := by
+  intros N_steps r_nmem
+  simp [pn] at r_nmem
+  induction N_steps with
+  | comm p q P Q hneq => {
+      simp [parallel, supp, atomic, r_nmem]
+      simp at r_nmem
+      have ⟨neq₁, neq₂⟩ := not_or.mp r_nmem
+      have neq₁' : p ≠ r := by intro c ; have := c.symm ; contradiction
+      have neq₂' : q ≠ r := by intro c ; have := c.symm ; contradiction
+      simp [neq₁, neq₂, neq₁', neq₂']
+  }
+  | par N N' M μ h₁ N_steps => {
+      simp at *
+      obtain ⟨p₁, p₂⟩ := μ
+      simp [*] at *
+      simp [parallel]
+      simp [supp]
+      have := N_steps r_nmem
+      simp [this]
+      by_cases N' r = SimpleProc.done
+      simp [*]
+      simp [*]
+  }
+
+def SimpleNet.remove (N: SimpleNet α) (p : α) : SimpleNet α := λ q => if q = p then SimpleProc.done else N q
+
+-- proposition 3.8
+theorem SimpleNet.nmem_supp_remove_unchange {N : SimpleNet α} : p ∉ supp N → remove N p = N := by
+  intro p_nmem_supp_N
+  unfold remove
+  funext name
+  by_cases name = p
+  {
+    rename_i h
+    have := SimpleNet.nmem_supp_terminated p_nmem_supp_N
+    simp [this, h]
+  }
+  {
+    rename_i neq
+    simp [neq]
+  }
+
+-- proposition 3.9
+theorem SimpleNet.remove_order_irrelevant {N : SimpleNet α} {p q : α} : (N.remove p).remove q = (N.remove q).remove p := by
+  funext name
+  by_cases name = q
+  {
+    rename_i heq
+    simp [remove, heq]
+  }
+  {
+    rename_i hneq
+    simp [remove, hneq]
+  }
