@@ -597,6 +597,8 @@ def SimpleNet.remove_list (N : SimpleNet α) (ps : List α) : SimpleNet α := ma
   | [] => N
   | t::h => (N.remove t).remove_list h
 
+-- TODO: Proposition 3.11
+
 @[simp]
 def listToSet (l : List α) : Set α :=
   l.foldr (λ x s => Set.insert x s) ∅
