@@ -1,5 +1,3 @@
-import Mathlib.Data.Finset.Basic
-import Mathlib.Data.Finset.Image
 import Mathlib.Order.Disjoint
 import Mathlib.Order.RelClasses
 import Mathlib.Data.Set.Basic
@@ -65,7 +63,7 @@ def SimpleNet.terminated  : SimpleNet α := λ _ => SimpleProc.done
 def SimpleNet.atomic  (p : α) (proc : SimpleProc α) : SimpleNet α := λ x => if p = x then proc else SimpleProc.done
 
 @[simp]
-def SimpleNet.update (N: SimpleNet α) (name : α) (proc : SimpleProc α) : SimpleNet α := λ n => if h: n = name then proc else N n
+def SimpleNet.update (N: SimpleNet α) (name : α) (proc : SimpleProc α) : SimpleNet α := λ n => if n = name then proc else N n
 
 abbrev simple_net_demo : SimpleNet Name := (SimpleNet.terminated.update Name.alice (SimpleProc.send Name.bob SimpleProc.done))
 
@@ -84,14 +82,14 @@ example : SimpleNet Name := SimpleNet.parallel
   (SimpleNet.terminated.update Name.buyer (SimpleProc.send Name.seller (SimpleProc.receive Name.seller SimpleProc.done)))
   (SimpleNet.terminated.update Name.bob (SimpleProc.receive Name.buyer (SimpleProc.send Name.buyer SimpleProc.done)))
   (by
-    simp [SimpleNet.supp, SimpleNet.terminated, Finset.empty]
+    simp [SimpleNet.supp, SimpleNet.terminated]
   )
 
 theorem SimpleNet.mem_supp_running {N : SimpleNet α} {p : α} : p ∈ SimpleNet.supp N → N p ≠ SimpleProc.done := by
   intro h
   intro c
   unfold SimpleNet.supp at h
-  contradiction
+  exact h c
 
 theorem SimpleNet.nmem_supp_terminated {N : SimpleNet α} {p : α} : p ∉ SimpleNet.supp N → N p = SimpleProc.done := by
   intro h
@@ -274,7 +272,7 @@ inductive SimpleNet.Step : (SimpleNet α) → (α × α) → (SimpleNet α) → 
         contradiction
       }
     }))
-  | par : ∀ N N' M μ {h₁ : Disjoint (supp N) (supp M)} {h₂ : Disjoint (supp N') (supp M)}, Step N μ N' → Step (parallel N M h₁) μ (parallel N' M h₂)
+  | par : ∀ N N' M μ (h₁ : Disjoint (supp N) (supp M)) (h₂ : Disjoint (supp N') (supp M)), Step N μ N' → Step (parallel N M h₁) μ (parallel N' M h₂)
 
 -- example 3.8
 example : SimpleNet.Step
@@ -307,7 +305,7 @@ theorem SimpleNet.step_nmem_unchange {N N' : SimpleNet α} {μ : (α × α)} {r 
       have neq₂' : q ≠ r := by intro c ; have := c.symm ; contradiction
       simp [neq₁, neq₂, neq₁', neq₂']
   }
-  | par N N' M μ h₁ N_steps => {
+  | par N N' M μ d₁ d₂ h₁ N_steps => {
       simp at *
       obtain ⟨p₁, p₂⟩ := μ
       simp [*] at *
@@ -321,6 +319,9 @@ theorem SimpleNet.step_nmem_unchange {N N' : SimpleNet α} {μ : (α × α)} {r 
   }
 
 def SimpleNet.remove (N: SimpleNet α) (p : α) : SimpleNet α := λ q => if q = p then SimpleProc.done else N q
+
+theorem SimpleNet.supp_remove_subset_supp (N: SimpleNet α) (p : α) : supp (remove N p) ⊆ supp N := by
+  simp [supp, remove]
 
 -- proposition 3.8
 theorem SimpleNet.nmem_supp_remove_unchange {N : SimpleNet α} : p ∉ supp N → remove N p = N := by
@@ -349,4 +350,245 @@ theorem SimpleNet.remove_order_irrelevant {N : SimpleNet α} {p q : α} : (N.rem
   {
     rename_i hneq
     simp [remove, hneq]
+  }
+
+-- lemma 3.10
+
+-- FIXME: This proof is too long. There must be a better way.
+theorem SimpleNet.step_nmem_step {N N' : SimpleNet α} {μ : (α × α)} {r : α} : Step N μ N' → r ∉ pn μ → Step (N.remove r) μ (N'.remove r) := by
+  intros n_steps r_nmem
+  induction n_steps with
+    -- case 1
+  | comm p q P Q h => {
+      simp [pn] at r_nmem
+      let N := parallel (atomic p (SimpleProc.send q P)) (atomic q (SimpleProc.receive p Q)) (by {
+          simp [supp, atomic, h]
+      })
+      have supp_N : supp N = {p, q} := by
+          simp [supp, parallel, atomic]
+          apply Set.ext ; intro name
+          constructor
+          {
+            intro h
+            simp at h
+            by_cases name = p
+            {
+              rename_i h₂
+              simp [h₂]
+            }
+            {
+              rename_i h₂
+              simp [h₂]
+              simp [*] at *
+              exact id h.symm
+            }
+          }
+          {
+            intro h
+            simp
+            by_cases name = p
+            {
+              rename_i h₂
+              simp [h₂]
+            }
+            {
+              rename_i h₂
+              simp [*] at *
+              exact id h.symm
+            }
+          }
+      have r_nmem_supp_N : r ∉ supp N := by simp [supp_N] ; assumption
+      have := SimpleNet.nmem_supp_remove_unchange r_nmem_supp_N
+      simp [this]
+      let N' := (parallel (atomic p P) (atomic q Q) (by {
+        simp [supp, atomic]
+        by_cases P = SimpleProc.done
+        {
+          simp [*]
+        }
+        {
+          simp [*]
+          intro c
+          exact (h (id c.symm)).elim
+        }
+      }))
+      have supp_N'_subset : supp N' ⊆ {p, q} := by
+        simp [supp, atomic, parallel]
+        simp [Set.subset_def]; intro name
+        intro h
+        by_cases p = name
+        {
+          rename_i h₂
+          left ; exact id h₂.symm
+        }
+        {
+          rename_i h₂
+          simp [h₂] at h
+          right ; exact h.left.symm
+        }
+      have r_nmem_supp_N' : r ∉ supp N' := by
+        exact Set.not_mem_subset supp_N'_subset r_nmem
+      have := nmem_supp_remove_unchange r_nmem_supp_N'
+      simp [this]
+      constructor
+      assumption
+  }
+  -- case 2
+  | par M₁ M₁' M₂ μ d₁ d₂ n_steps ih => {
+      rename_i d₁ d₂
+      by_cases r ∈ supp M₁
+      {
+        -- case 2.1
+        rename_i h
+        have := ih r_nmem
+        have : remove (parallel M₁ M₂ d₁) r = parallel (remove M₁ r) M₂ (by {
+          have := SimpleNet.supp_remove_subset_supp M₁ r
+          apply Set.disjoint_of_subset_left
+          exact this
+          exact d₁
+        }) := by
+          funext name
+          by_cases r = name
+          {
+            simp [remove, parallel, supp, *]
+            have := Set.disjoint_left.mp d₁ h
+            have := SimpleNet.nmem_supp_terminated this
+            simp [*] at this
+            exact this.symm
+          }
+          {
+            rename_i neq
+            have : name ≠ r := by intro c ; exact neq c.symm
+            simp [remove, parallel, supp, neq, this]
+            by_cases M₁ name = SimpleProc.done <;> rename_i h <;> simp [h]
+          }
+        simp [this]
+        have : remove (parallel M₁' M₂ d₂) r = parallel (remove M₁' r) M₂ (by {
+          apply Set.disjoint_of_subset_left
+          exact SimpleNet.supp_remove_subset_supp M₁' r
+          exact d₂
+        }) := by
+          funext name
+          by_cases r = name <;> rename_i h₂
+          {
+            simp [remove, parallel, supp, h₂]
+            have := Set.disjoint_left.mp d₁ h
+            have := SimpleNet.nmem_supp_terminated this
+            simp [this.symm, h₂]
+          }
+          {
+            have : name ≠ r := by intro c ; exact h₂ c.symm
+            simp [remove, parallel, supp, h₂, this]
+            by_cases M₁' name = SimpleProc.done <;> rename_i h <;> simp [h]
+          }
+        simp [this]
+        constructor
+        exact ih r_nmem
+      }
+      rename_i r_nmem_supp_M₁
+      by_cases r ∈ supp M₂
+      {
+        -- case 2.2
+        have : (remove (parallel M₁ M₂ d₁) r) = parallel M₁ (M₂.remove r) (by {
+          apply Set.disjoint_of_subset_right
+          exact SimpleNet.supp_remove_subset_supp M₂ r
+          exact d₁
+        }) := by
+          funext name
+          simp [remove, parallel]
+          by_cases name = r <;> rename_i h₂
+          {
+            simp [h₂, r_nmem_supp_M₁]
+          }
+          {
+            simp [h₂]
+          }
+        simp [this]
+        have : (remove (parallel M₁' M₂ d₂) r) = parallel M₁' (M₂.remove r ) (by {
+          apply Set.disjoint_of_subset_right
+          exact SimpleNet.supp_remove_subset_supp M₂ r
+          exact d₂
+
+        }) := by
+          funext name
+          by_cases name = r <;> rename_i h₂
+          {
+            simp [remove, parallel, supp, h₂]
+            by_cases M₁' r = SimpleProc.done
+            {
+              rename_i h
+              simp [h]
+            }
+            {
+              rename_i h
+              simp [h]
+              subst name
+              have := SimpleNet.step_nmem_unchange n_steps r_nmem
+              rw [←this]
+              have := SimpleNet.nmem_supp_terminated r_nmem_supp_M₁
+              exact this.symm
+            }
+          }
+          {
+            simp [remove, parallel, supp, h₂]
+            by_cases M₁' name = SimpleProc.done <;> rename_i h₃
+            {
+              simp [h₃]
+            }
+            {
+              simp [h₃]
+            }
+          }
+        simp [this]
+        apply Step.par
+        exact n_steps
+      }
+      {
+        -- case 2.3
+        rename_i r_nmem_supp_M₂
+        have x : remove (parallel M₁ M₂ d₁) r = (parallel M₁ M₂ d₁) := by
+          apply nmem_supp_remove_unchange
+          simp [supp, parallel]
+          by_cases M₁ r = SimpleProc.done
+          {
+            rename_i h₂
+            simp [h₂]
+            exact nmem_supp_terminated r_nmem_supp_M₂
+          }
+          {
+            rename_i h₂
+            simp [h₂]
+            exact h₂ (nmem_supp_terminated r_nmem_supp_M₁)
+          }
+        simp [x]
+        have : remove (parallel M₁' M₂ d₂) r = parallel M₁' M₂ d₂ := by
+          funext name
+          simp [remove, parallel]
+          by_cases name = r
+          {
+            rename_i h₂
+            simp [h₂]
+            have x := SimpleNet.step_nmem_unchange n_steps r_nmem
+            have y := SimpleNet.nmem_supp_terminated r_nmem_supp_M₁
+            by_cases r ∈ supp M₁'
+            {
+              rename_i h₃
+              have := SimpleNet.mem_supp_running h₃
+              simp [x] at y
+              contradiction
+            }
+            {
+              rename_i h₃
+              simp [h₃]
+              exact (SimpleNet.nmem_supp_terminated r_nmem_supp_M₂).symm
+            }
+          }
+          {
+            rename_i h₂
+            simp [h₂]
+          }
+        simp [this]
+        constructor
+        assumption
+      }
   }
