@@ -592,3 +592,49 @@ theorem SimpleNet.step_nmem_step {N N' : SimpleNet α} {μ : (α × α)} {r : α
         assumption
       }
   }
+
+def SimpleNet.remove_list (N : SimpleNet α) (ps : List α) : SimpleNet α := match ps with
+  | [] => N
+  | t::h => (N.remove t).remove_list h
+
+@[simp]
+def listToSet (l : List α) : Set α :=
+  l.foldr (λ x s => Set.insert x s) ∅
+
+
+-- lemma 3.12
+theorem SimpleNet.step_nmem_step_list {N N' : SimpleNet α} {μ : (α × α)} {rs : List α} : Step N μ N' → Disjoint (listToSet rs) (pn μ) → Step (N.remove_list rs) μ (N'.remove_list rs) := by
+  intros N_steps d
+  induction rs generalizing N N' with
+  | nil => {
+    simp [remove_list]
+    assumption
+  }
+  | cons h t ih => {
+    by_cases h ∈ pn μ
+    {
+      -- impossible because h :: t and pn μ are disjoint
+      rename_i h_mem
+      have := Set.disjoint_right.mp d h_mem
+      simp at this
+      have : h ∈ Set.insert h (List.foldr (fun x s => Set.insert x s) ∅ t) := by
+        exact (this (Or.inl rfl)).elim
+      contradiction
+    }
+    {
+      rename_i h_nmem
+      simp [remove_list]
+      apply ih
+      apply step_nmem_step
+      assumption
+      assumption
+      have : listToSet t ⊆ (listToSet (h :: t)) := by
+        simp
+        simp [Set.subset_def]
+        intro x hx
+        apply Set.mem_insert_iff.mp
+        by_cases x = h <;> simp [*]
+      apply Set.disjoint_of_subset_left this
+      assumption
+    }
+  }
