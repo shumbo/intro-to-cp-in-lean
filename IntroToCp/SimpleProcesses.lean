@@ -1,6 +1,7 @@
 import Mathlib.Order.Disjoint
 import Mathlib.Order.RelClasses
 import Mathlib.Data.Set.Basic
+import Mathlib.Data.Finset.Basic
 import «IntroToCp».SimpleChoreographies
 import «IntroToCp».Maps
 
@@ -597,6 +598,46 @@ def SimpleNet.remove_list (N : SimpleNet α) (ps : List α) : SimpleNet α := ma
   | [] => N
   | t::h => (N.remove t).remove_list h
 
+theorem SimpleNet.supp_remove_list_subset_supp (N: SimpleNet α) (ps : List α) : supp (remove_list N ps) ⊆ supp N := by
+  induction ps generalizing N with
+  | nil => {
+      simp [remove_list] ; exact fun ⦃a⦄ a => a
+  }
+  | cons head tail ih => {
+      simp [remove_list]
+      have := ih (remove N head)
+      apply Set.Subset.trans this
+      exact supp_remove_subset_supp N head
+  }
+
+theorem SimpleNet.remove_list_terminated {N: SimpleNet α} {ps : List α} {name : α} : name ∈ ps → (N.remove_list ps) name = SimpleProc.done := by
+  intros name_mem
+  induction ps generalizing N with
+  | nil => contradiction
+  | cons head tail ih => {
+    simp [remove_list]
+    have := List.mem_cons.mp name_mem
+    apply this.elim
+    {
+      intro h
+      simp [h]
+      have : (remove N head) head = SimpleProc.done := by simp [remove]
+      induction tail generalizing head with
+      | nil => simp [remove_list, remove]
+      | cons h' t' ih' => {
+        sorry
+      }
+    }
+    {
+      simp [*] at *
+      intro c
+      apply ih
+      assumption
+    }
+
+  }
+
+
 -- TODO: Proposition 3.11
 
 @[simp]
@@ -640,3 +681,177 @@ theorem SimpleNet.step_nmem_step_list {N N' : SimpleNet α} {μ : (α × α)} {r
       assumption
     }
   }
+
+-- ### Transitions and Network Restriction
+
+section
+  -- FIXME: make α "enumerable" so the membership is decidable
+  open Classical
+
+  noncomputable
+  def SimpleNet.restrict (N: SimpleNet α) (ps : Set α) : SimpleNet α := λ name => if name ∈ ps then N name else SimpleProc.done
+end
+
+theorem SimpleNet.restrict_supp_subset (N : SimpleNet α) (ps : Set α) : supp (N.restrict ps) ⊆ supp N := by
+  intros name name_mem
+  simp [supp, restrict] at name_mem
+  by_cases name ∈ ps
+  {
+    rename_i h
+    simp [h] at name_mem
+    simp [supp]
+    assumption
+  }
+  {
+    rename_i h
+    simp [h] at name_mem
+  }
+
+theorem SimpleNet.nmem_supp_restrict (N: SimpleNet α) (ps : Set α) (name : α) : name ∉ ps → name ∉ supp (restrict N ps) := by
+  intros h
+  simp [restrict, supp, h]
+
+-- NOTE: not really the definition of the
+
+-- proposition 3.13
+
+def SimpleNet.restrict_supp_unchange (N: SimpleNet α) : N.restrict (supp N) = N := by
+  simp [restrict, supp]
+  funext p
+  by_cases N p = SimpleProc.done
+  {
+    rename_i h
+    simp [restrict, h]
+  }
+  {
+    rename_i h
+    simp [restrict, h]
+  }
+
+-- proposition 3.14
+
+def SimpleNet.parallel_restrict_distrib (N M : SimpleNet α) (d : Disjoint (supp N) (supp M)) (p : Set α) : (parallel N M d).restrict p = parallel (N.restrict p) (M.restrict p) (by {
+  have d₁ := restrict_supp_subset N p
+  have d₂ := restrict_supp_subset M p
+  apply Set.disjoint_of_subset
+  repeat assumption
+}) := by
+  funext name
+  simp [restrict, parallel]
+  by_cases h: name ∈ supp (restrict N p)
+  {
+    simp [h]
+    by_cases h₂ : name ∈ p
+    {
+      simp [h₂]
+      intro c
+      have := restrict_supp_subset N p
+      have := Set.mem_of_subset_of_mem this h
+      contradiction
+    }
+    {
+      simp [h₂]
+    }
+  }
+  {
+    simp [h]
+    by_cases h₂ : name ∈ p
+    {
+      simp [h₂]
+      intro c
+      exfalso
+      simp [supp, restrict, h₂] at h
+      have := SimpleNet.mem_supp_running c
+      contradiction
+    }
+    {
+      simp [h₂]
+    }
+  }
+
+-- proposition 3.15
+
+def SimpleNet.parallel_remove_restrict (N : SimpleNet α) (p : List α) : N = parallel (N.remove_list p) (N.restrict (listToSet p)) (by {
+  have : ∀ name : α, name ∈ p → name ∉ supp (remove_list N p) := by {
+    intro name name_mem
+    induction p generalizing N with
+    | nil => contradiction
+    | cons head tail ih => {
+        by_cases h : head = name
+        {
+          simp [remove_list]
+          have name_nmem : name ∉ supp (remove N name) := by simp [supp, remove]
+          have := supp_remove_list_subset_supp (remove N name) tail
+          apply Set.not_mem_subset
+          {
+            simp [h]
+            exact this
+          }
+          {
+            exact name_nmem
+          }
+        }
+        {
+          apply ih
+          have := List.mem_cons.mp name_mem
+          apply this.elim
+          {
+            intro c
+            exact (h (id c.symm)).elim
+          }
+          {
+            intro h; assumption
+          }
+        }
+    }
+  }
+  apply Set.disjoint_left.mpr
+  intro name
+  by_cases h : name ∈ p
+  {
+    have := this name h
+    intro c ; contradiction
+  }
+  {
+    intro c
+    apply nmem_supp_restrict
+    induction p with
+    | nil => simp
+    | cons head tail ih => {
+      have : name ≠ head := by
+        intro c
+        have := List.mem_cons_self head tail
+        rw [c] at h
+        contradiction
+      have : name ∉ tail := by
+        intro c
+        have := List.mem_cons_of_mem head c
+        contradiction
+      intro c
+      have := Set.mem_insert_iff.mp c
+      apply this.elim
+      {
+        intro c
+        contradiction
+      }
+      {
+        intro c
+        apply ih
+        {
+          intro n co
+          simp [supp]
+          exact remove_list_terminated co
+        }
+        {
+          assumption
+        }
+        {
+          sorry
+        }
+        sorry
+      }
+
+    }
+  }
+
+}) := sorry
