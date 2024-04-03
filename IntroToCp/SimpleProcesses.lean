@@ -546,4 +546,74 @@ namespace Fintype
         }
       }
 
+  -- lemma 3.16
+
+  theorem SimpleNet.step_restrict_step {N N' : SimpleNet α} {μ : (α × α)} : Step N μ N' → Step (N.restrict {μ.fst, μ.snd}) μ (N'.restrict {μ.fst, μ.snd}) := by
+    intro N_steps
+    induction N_steps with
+    | comm p q P Q hneq => {
+      simp
+      have : ∀ (P Q : SimpleProc α), P ≠ SimpleProc.done → Q ≠ SimpleProc.done → supp (parallel (atomic p (P)) (atomic q (Q)) (by {
+        simp [disjoint_atomics hneq]
+      })) = {p, q} := by
+        intros P Q hp hq
+        simp [supp, parallel, atomic, fin.complete]
+        apply Finset.ext ; intro name
+        simp [fin.complete]
+        apply Iff.intro
+        {
+          intro h
+          by_cases h₁ : name = p
+          {
+            left ; assumption
+          }
+          {
+            have : p ≠ name := by intro c ; exact h₁ c.symm
+            simp [this] at h
+            right ; exact id h.left.symm
+          }
+        }
+        {
+          intro h
+          cases h
+          {
+            rename_i h₂
+            simp [h₂, hp]
+          }
+          {
+            rename_i h₂
+            simp [h₂, hq, hneq]
+          }
+        }
+      have x := restrict_supp_unchange (parallel (atomic p (SimpleProc.send q P)) (atomic q (SimpleProc.receive p Q)) (by {
+        simp [disjoint_atomics hneq]
+      }))
+      simp [this] at x
+      simp [x]
+      have : (restrict (parallel (atomic p P) (atomic q Q) (by simp [disjoint_atomics hneq])) {p, q}) = (parallel (atomic p P) (atomic q Q) (by simp [disjoint_atomics hneq])) := by
+        funext name
+        simp [atomic, parallel, restrict]
+        intro h
+        simp [not_or] at h
+        obtain ⟨h₁, h₂⟩ := h
+        by_cases hh : name ∈ supp (atomic p P)
+        {
+          have : p ≠ name := by intro c ; exact h₁ (id c.symm)
+          simp [hh, this]
+        }
+        {
+          have : q ≠ name := by intro c ; exact h₂ (id c.symm)
+          simp [this, hh]
+        }
+      simp [this]
+      constructor
+      assumption
+    }
+    | par M₁ M₁' M₂ μ' d₁ d₂ _ ih => {
+      have h₁ := SimpleNet.parallel_restrict_distrib M₁ M₂ d₁ {μ'.1, μ'.2}
+      have h₂ := SimpleNet.parallel_restrict_distrib M₁' M₂ d₂ {μ'.1, μ'.2}
+      simp [h₁, h₂]
+      apply Step.par
+      exact ih
+    }
 end Fintype
