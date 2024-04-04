@@ -5,6 +5,7 @@ import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fintype.Basic
 import «IntroToCp».SimpleChoreographies
 import «IntroToCp».Maps
+import «IntroToCp».Name
 
 open Fintype
 
@@ -15,19 +16,6 @@ inductive SimpleProc (α : Type) where
 | send (dst : α) (cont : SimpleProc α)
 | receive (src : α) (cont : SimpleProc α)
 deriving Repr, DecidableEq
-
-inductive Name where
-| alice : Name
-| bob : Name
-| charlie : Name
-deriving Repr, DecidableEq
-
-instance : Fintype Name where
-  elems := {Name.alice, Name.bob, Name.charlie}
-  complete := by
-    intro n
-    simp
-    cases n <;> simp
 
 def SimpleNet (α : Type) [DecidableEq α] [Fintype α] := α → SimpleProc α
 def SimpleNet.supp (N : SimpleNet α) : Finset α := (fin.elems).filter (λ name => N name ≠ SimpleProc.done)
@@ -222,7 +210,8 @@ theorem SimpleNet.step_nmem_unchange {N N' : SimpleNet α} {μ : (α × α)} {r 
     obtain ⟨p₁, p₂⟩ := μ
     simp [*] at *
     simp [parallel, supp, fin.complete]
-    by_cases h : N r = SimpleProc.done <;> simp [N_steps, h]
+    simp [pn] at r_nmem
+    by_cases N r = SimpleProc.done <;> simp [r_nmem, N_steps.symm]
   }
 
 def SimpleNet.remove (N: SimpleNet α) (p : α) : SimpleNet α :=
@@ -301,7 +290,6 @@ theorem SimpleNet.step_nmem_step {N N' : SimpleNet α} {μ : (α × α)} {r : α
     have r_nmem_supp_N : r ∉ supp N := by simp [supp_N, not_or] ; assumption
     have := SimpleNet.nmem_supp_remove_unchange r_nmem_supp_N
     simp [this]
-    let N' := (parallel (atomic p P) (atomic q Q) (by { apply disjoint_atomics ; assumption }))
     have : remove (parallel (atomic p P) (atomic q Q) (by {apply disjoint_atomics ; assumption})) r = (parallel (atomic p P) (atomic q Q) (by {apply disjoint_atomics ; assumption})) := by
       funext name
       simp [atomic, parallel, supp, remove, fin.complete]
@@ -542,15 +530,14 @@ theorem SimpleNet.step_nmem_step_list {N N' : SimpleNet α} {μ : (α × α)} {r
       cases h <;> simp [*] at d
     }
     {
-      simp [remove_list]
+      simp [remove_list, pn]
       apply ih
       apply step_nmem_step
-      assumption
-      assumption
-      have : tail.toFinset ⊆ (head::tail).toFinset := by
-        simp
+      {exact N_steps}
+      {simp [pn] ; exact h}
+      have : tail.toFinset ⊆ (head::tail).toFinset := by simp
       apply Finset.disjoint_of_subset_left this
-      assumption
+      exact d
     }
   }
 
@@ -754,7 +741,8 @@ def SimpleNet.parallel_remove_restrict (N : SimpleNet α) (ps : List α) :
 
 -- lemma 3.16
 
-theorem SimpleNet.step_restrict_step {N N' : SimpleNet α} {μ : (α × α)} : Step N μ N' → Step (N.restrict {μ.fst, μ.snd}) μ (N'.restrict {μ.fst, μ.snd}) := by
+theorem SimpleNet.step_restrict_step {N N' : SimpleNet α} {μ : (α × α)} : Step N μ N' → Step (N.restrict (pn μ)) μ (N'.restrict (pn μ)) := by
+  simp [pn]
   intro N_steps
   induction N_steps with
   | comm p q P Q hneq => {
@@ -816,8 +804,10 @@ theorem SimpleNet.step_restrict_step {N N' : SimpleNet α} {μ : (α × α)} : S
     assumption
   }
   | par M₁ M₁' M₂ μ' d₁ d₂ _ ih => {
-    have h₁ := SimpleNet.parallel_restrict_distrib M₁ M₂ d₁ {μ'.1, μ'.2}
-    have h₂ := SimpleNet.parallel_restrict_distrib M₁' M₂ d₂ {μ'.1, μ'.2}
+    have h₁ := SimpleNet.parallel_restrict_distrib M₁ M₂ d₁ (pn μ')
+    simp [pn] at h₁
+    have h₂ := SimpleNet.parallel_restrict_distrib M₁' M₂ d₂ (pn μ')
+    simp [pn] at h₂
     simp [h₁, h₂]
     apply Step.par
     exact ih
