@@ -1,7 +1,6 @@
 import Mathlib.Order.Disjoint
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fintype.Basic
-import «IntroToCp».Relation
 import «IntroToCp».Name
 
 variable {α : Type} [DecidableEq α] [fin : Fintype α]

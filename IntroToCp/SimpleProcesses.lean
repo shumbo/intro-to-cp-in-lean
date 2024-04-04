@@ -1,10 +1,7 @@
 import Mathlib.Order.Disjoint
-import Mathlib.Order.RelClasses
-import Mathlib.Data.Set.Basic
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fintype.Basic
 import «IntroToCp».SimpleChoreographies
-import «IntroToCp».Maps
 import «IntroToCp».Name
 
 open Fintype
