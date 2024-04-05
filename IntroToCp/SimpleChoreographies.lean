@@ -30,9 +30,16 @@ def scatterProtocol := Name.alice ~> Name.bob ; Name.alice ~> Name.charlie ; Sim
 
 -- Semantics
 
+
+def Transition (S : Type) (L : Type) : Type := S → L → S → Prop
+inductive Transition.Multi {S : Type} {L : Type} (t : Transition S L) : S → List L → S → Prop where
+  | rfl : ∀ (s₀: S), Multi t s₀ [] s₀
+  | step : ∀ (s: S) (μ : L) (s' : S) (μ' : List L) (s'' : S),
+      t s μ s' → Multi t s' μ' s'' → Multi t s (μ :: μ') s''
+
 def pn (s : α × α) : Finset α := {s.fst, s.snd}
 
-inductive SimpleChor.Step : SimpleChor α → (α × α) → SimpleChor α → Prop where
+inductive SimpleChor.Step : Transition (SimpleChor α) (α × α) where
   | comm : ∀ {p q : α} {C : SimpleChor α}, Step (p ~> q ; C) (p, q) C
   | delay : ∀ {C C': SimpleChor α} {μ : (α × α)}, Step C μ C' → Disjoint {p, q} (pn μ) → Step (p ~> q ; C) μ (p ~> q ; C')
 
@@ -42,20 +49,17 @@ example : SimpleChor.Step
   (Name.buyer, Name.seller)
   (Name.seller ~> Name.buyer ; SimpleChor.done) := by apply SimpleChor.Step.comm
 
-inductive SimpleChor.MultiStep : SimpleChor α → List (α × α) → SimpleChor α → Prop where
-  | rfl : ∀ (C: SimpleChor α), MultiStep C [] C
-  | step : ∀ (C: SimpleChor α) (μ : (α × α)) (C' : SimpleChor α) (μ' : List (α × α)) (C'' : SimpleChor α),
-      Step C μ C' → MultiStep C' μ' C'' → MultiStep C (μ :: μ') C''
+def SimpleChor.MultiStep {α : Type} [DecidableEq α] := Transition.Multi (S := SimpleChor α) (SimpleChor.Step)
 
 example : SimpleChor.MultiStep
   (Name.p₁ ~> Name.q₁ ; Name.p₂ ~> Name.q₂ ; Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆)
   [(Name.p₁, Name.q₁), (Name.p₂, Name.q₂), (Name.p₃, Name.q₃)]
   SimpleChor.𝕆
 := by
-  apply SimpleChor.MultiStep.step _ _ (Name.p₂ ~> Name.q₂ ; Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆) _ _
+  apply Transition.Multi.step _ _ (Name.p₂ ~> Name.q₂ ; Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆) _ _
   apply SimpleChor.Step.comm
-  apply SimpleChor.MultiStep.step _ _ (Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆) _ _
+  apply Transition.Multi.step _ _ (Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆) _ _
   apply SimpleChor.Step.comm
-  apply SimpleChor.MultiStep.step _ _ (SimpleChor.𝕆) _ _
+  apply Transition.Multi.step _ _ (SimpleChor.𝕆) _ _
   apply SimpleChor.Step.comm
-  apply SimpleChor.MultiStep.rfl
+  apply Transition.Multi.rfl

@@ -35,10 +35,18 @@ theorem SimpleNet.mem_supp_running {N : SimpleNet α} {p : α} : p ∈ SimpleNet
   have := (Finset.mem_filter.mp h).right
   contradiction
 
+theorem SimpleNet.running_mem_supp {N : SimpleNet α} {p : α} : N p ≠ SimpleProc.done → p ∈ SimpleNet.supp N := by
+  intro h
+  simp [supp, fin.complete, h]
+
 theorem SimpleNet.nmem_supp_terminated {N : SimpleNet α} {p : α} : p ∉ SimpleNet.supp N → N p = SimpleProc.done := by
   intro h
   simp [supp] at h
   exact h (fin.complete p)
+
+theorem SimpleNet.terminated_nmem_supp {N : SimpleNet α} {p : α} : N p = SimpleProc.done → p ∉ SimpleNet.supp N := by
+  intro h
+  simp [supp, fin.complete, h]
 
 theorem SimpleNet.supp_parallel_supp_union: ∀ (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)), SimpleNet.supp (SimpleNet.parallel N M h) = SimpleNet.supp N ∪ SimpleNet.supp M := by
   intros N M h
@@ -809,3 +817,165 @@ theorem SimpleNet.step_restrict_step {N N' : SimpleNet α} {μ : (α × α)} : S
     apply Step.par
     exact ih
   }
+
+-- ## Parallelism, Communication Safety, and Starvation-Freedom
+
+def SimpleNet.MultiStep := Transition.Multi (S := SimpleNet α) SimpleNet.Step
+
+-- ### Parallelism
+
+def SimpleNet.supp_restrict_subset (N : SimpleNet α) (ps : Finset α) : supp (N.restrict ps) ⊆ ps := by
+  simp [restrict, supp]
+  apply Finset.subset_iff.mpr ; intro name h
+  have := Finset.mem_filter.mp h
+  exact this.right.left
+
+def SimpleNet.decompose_disjoint_labels (N : SimpleNet α) (μ₁ μ₂: (α × α)):
+  (d : Disjoint (pn μ₁) (pn μ₂)) →
+  let par_res_res := (parallel (N.restrict (pn μ₁)) (N.restrict (pn μ₂)) (by {
+      have h₁ := supp_restrict_subset N (pn μ₁)
+      have h₂ := supp_restrict_subset N (pn μ₂)
+      apply Finset.disjoint_of_subset_left h₁
+      apply Finset.disjoint_of_subset_right h₂
+      exact d
+    }))
+  N = parallel
+    par_res_res
+    (N.restrict (((supp N) \ (pn μ₁)) \ (pn μ₂)))
+    (by {
+      have s₁ : supp par_res_res ⊆ pn μ₁ ∪ pn μ₂ := by
+        simp [supp_parallel_supp_union]
+        have h₁ := supp_restrict_subset N (pn μ₁)
+        have h₂ := supp_restrict_subset N (pn μ₂)
+        exact Finset.union_subset_union h₁ h₂
+      have s₂ : Disjoint (supp (restrict N ((supp N \ pn μ₁) \ pn μ₂))) (pn μ₁ ∪ pn μ₂) := by
+        apply Finset.disjoint_right.mpr
+        intro name h
+        simp [restrict, supp, fin.complete]
+        intro h₁ h₂
+        simp at h
+        cases h
+        contradiction
+        contradiction
+      apply Finset.disjoint_of_subset_left
+      exact s₁
+      exact s₂.symm
+    })
+  := by
+    intros d
+    funext name
+    by_cases N name = SimpleProc.done
+    {
+      simp [parallel, restrict, pn, supp, fin.complete]
+      rename_i name_done
+      simp [name_done]
+    }
+    {
+      rename_i name_running
+      nth_rewrite 1 [parallel]
+      by_cases name ∈ pn μ₁ ∪ pn μ₂
+      {
+        -- name in left
+        rename_i name_mem_label
+        simp [supp, parallel, restrict, fin.complete, name_running]
+        simp at name_mem_label
+        apply name_mem_label.elim
+        {
+          intro name_mem_μ₁
+          simp [name_mem_μ₁, name_running]
+        }
+        {
+          intro name_mem_μ₂
+          have := Finset.disjoint_right.mp d name_mem_μ₂
+          simp [name_mem_μ₂, name_running, this]
+        }
+      }
+      {
+        -- name in right
+        rename_i name_nmem_label
+        have h₁ := supp_restrict_subset N (pn μ₁)
+        have h₂ := supp_restrict_subset N (pn μ₂)
+        have := Finset.union_subset_union h₁ h₂
+        have name_nmem : name ∉ supp (restrict N (pn μ₁)) ∪ supp (restrict N (pn μ₂)) := by
+          intro c
+          have := Finset.mem_of_subset this c
+          exact name_nmem_label this
+        have := supp_parallel_supp_union (restrict N (pn μ₁)) (restrict N (pn μ₂)) (by {
+          apply Finset.disjoint_of_subset_left h₁
+          apply Finset.disjoint_of_subset_right h₂
+          exact d
+        })
+        rw [this]
+        simp at name_nmem
+        simp [name_nmem]
+        simp [restrict, fin.complete, running_mem_supp name_running]
+        simp [not_or] at name_nmem_label
+        simp [name_nmem_label]
+      }
+    }
+
+-- Proposition 3.17
+
+def SimpleNet.distinct_step_compose {N: SimpleNet α} {μ₁ μ₂ : (α × α)}:
+  SimpleNet.Step N μ₁ N₁ →
+  SimpleNet.Step N μ₂ N₂ →
+  Disjoint (pn μ₁) (pn μ₂) →
+  ∃ N₃, SimpleNet.MultiStep N (μ₁ :: μ₂ :: []) N₃ := by
+    intro N_steps₁ N_steps₂ d
+    have h₁ := decompose_disjoint_labels N μ₁ μ₂ d
+    have s₁ := step_restrict_step N_steps₁
+    have s₂ := step_restrict_step N_steps₂
+    simp [h₁]
+    exists parallel (parallel (N₁.restrict (pn μ₁)) (N₂.restrict (pn μ₂)) (by {
+      simp [restrict, supp]
+      apply Finset.disjoint_filter.mpr
+      simp [fin.complete]
+      intro name h₁ _ _
+      have := (Finset.disjoint_left.mp d) h₁
+      contradiction
+    })) (N.restrict (((supp N) \ (pn μ₁)) \ (pn μ₂))) (by {
+      simp [supp, restrict, parallel]
+      apply Finset.disjoint_filter.mpr
+      simp [fin.complete]
+      intro name h h₂ h₃
+      simp [*] at *
+    })
+    apply Transition.Multi.step _ μ₁ (parallel (parallel (N₁.restrict (pn μ₁)) (N.restrict (pn μ₂)) (by {
+      have h₁ := supp_restrict_subset N₁ (pn μ₁)
+      have h₂ := supp_restrict_subset N (pn μ₂)
+      apply Finset.disjoint_of_subset_left h₁
+      apply Finset.disjoint_of_subset_right h₂
+      exact d
+    })) (N.restrict (((supp N) \ (pn μ₁)) \ (pn μ₂))) (by {
+      simp [parallel, restrict, pn, supp]
+      apply Finset.disjoint_filter.mpr
+      simp [fin.complete]
+      intro name h h₂ h₃
+      simp [*] at *
+    }))
+    {
+      apply Step.par
+      apply Step.par
+      exact s₁
+    }
+    apply Transition.Multi.step _ μ₂ (parallel (parallel (N₁.restrict (pn μ₁)) (N₂.restrict (pn μ₂)) (by {
+      have h₁ := supp_restrict_subset N₁ (pn μ₁)
+      have h₂ := supp_restrict_subset N₂ (pn μ₂)
+      apply Finset.disjoint_of_subset_left h₁
+      apply Finset.disjoint_of_subset_right h₂
+      exact d
+    })) (N.restrict (((supp N) \ (pn μ₁)) \ (pn μ₂))) (by {
+      simp [parallel, restrict, pn, supp]
+      apply Finset.disjoint_filter.mpr
+      simp [fin.complete]
+      intro name h h₂ h₃
+      simp [*] at *
+    }))
+    {
+      apply Step.par
+      nth_rewrite 1 [SimpleNet.comm]
+      nth_rewrite 2 [SimpleNet.comm]
+      apply Step.par
+      exact s₂
+    }
+    apply Transition.Multi.rfl
