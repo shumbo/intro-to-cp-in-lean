@@ -117,7 +117,7 @@ theorem SimpleNet.ident {N : SimpleNet α} : SimpleNet.parallel N (SimpleNet.ter
   unfold terminated
   exact id this.symm
 
-theorem SimpleNet.comm {N M : SimpleNet α} {h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)} : SimpleNet.parallel N M h = SimpleNet.parallel M N (disjoint_comm.mp h) := by
+theorem SimpleNet.comm (N M : SimpleNet α) (h : Disjoint (SimpleNet.supp N) (SimpleNet.supp M)) : SimpleNet.parallel N M h = SimpleNet.parallel M N (disjoint_comm.mp h) := by
   funext p
   simp [parallel, supp, fin.complete]
   by_cases h₁ : p ∈ supp N
@@ -629,8 +629,6 @@ def SimpleNet.parallel_restrict_distrib (N M : SimpleNet α) (d : Disjoint (supp
     }
   }
 
--- proposition 3.15
-
 def SimpleNet.nmem_supp_nmem_remove_list (N: SimpleNet α) (ps : List α) (name : α) : name ∉ supp N → name ∉ supp (N.remove_list ps) := by
   intro h
   induction ps generalizing N with
@@ -707,6 +705,7 @@ def SimpleNet.mem_supp_nmem_remove_list_mem_supp (N: SimpleNet α) {ps : List α
     simp [mem_supp_running this]
   }
 
+-- proposition 3.15
 
 def SimpleNet.parallel_remove_restrict (N : SimpleNet α) (ps : List α) :
   N = parallel (N.remove_list ps) (N.restrict ps.toFinset) (by {
