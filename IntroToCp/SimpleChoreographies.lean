@@ -40,14 +40,14 @@ inductive Transition.Multi {S : Type} {L : Type} (t : Transition S L) : S → Li
 def pn (s : α × α) : Finset α := {s.fst, s.snd}
 
 inductive SimpleChor.Step : Transition (SimpleChor α) (α × α) where
-  | comm : ∀ {p q : α} {C : SimpleChor α}, Step (p ~> q ; C) (p, q) C
-  | delay : ∀ {C C': SimpleChor α} {μ : (α × α)}, Step C μ C' → Disjoint {p, q} (pn μ) → Step (p ~> q ; C) μ (p ~> q ; C')
+  | comm : ∀ (p q : α) (C : SimpleChor α), p ≠ q → Step (p ~> q ; C) (p, q) C
+  | delay : ∀ C μ C' (p q : α), p ≠ q → Step C μ C' → Disjoint {p, q} (pn μ) → Step (p ~> q ; C) μ (p ~> q ; C')
 
 -- Example 2.3
 example : SimpleChor.Step
   (Name.buyer ~> Name.seller ; Name.seller ~> Name.buyer ; SimpleChor.done)
   (Name.buyer, Name.seller)
-  (Name.seller ~> Name.buyer ; SimpleChor.done) := by apply SimpleChor.Step.comm
+  (Name.seller ~> Name.buyer ; SimpleChor.done) := by apply SimpleChor.Step.comm ; simp
 
 def SimpleChor.MultiStep {α : Type} [DecidableEq α] := Transition.Multi (S := SimpleChor α) (SimpleChor.Step)
 
@@ -58,8 +58,11 @@ example : SimpleChor.MultiStep
 := by
   apply Transition.Multi.step _ _ (Name.p₂ ~> Name.q₂ ; Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆) _ _
   apply SimpleChor.Step.comm
+  simp
   apply Transition.Multi.step _ _ (Name.p₃ ~> Name.q₃ ; SimpleChor.𝕆) _ _
   apply SimpleChor.Step.comm
+  simp
   apply Transition.Multi.step _ _ (SimpleChor.𝕆) _ _
   apply SimpleChor.Step.comm
+  simp
   apply Transition.Multi.rfl
