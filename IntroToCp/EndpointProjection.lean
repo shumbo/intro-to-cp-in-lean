@@ -12,7 +12,7 @@ variable {α : Type} [DecidableEq α] [fin : Fintype α]
 
 def process_projection (C : SimpleChor α) (r : α) : SimpleProc α := match C with
   | SimpleChor.done => SimpleProc.done
-  | SimpleChor.comm p q C' =>
+  | SimpleChor.comm p q C' _ =>
       if r = p then SimpleProc.send q (process_projection C' r) else
       if r = q then SimpleProc.receive p (process_projection C' r) else
       process_projection C' r
@@ -398,4 +398,169 @@ theorem completeness {C : SimpleChor α} {μ : (α × α)} {C' : SimpleChor α} 
 
     rw [←this] at h₂'
     exact h₂'
+  }
+
+lemma SimpleNet.step_mem {M N : SimpleNet α} {μ : α × α} : SimpleNet.Step M μ N → pn μ ⊆ SimpleNet.supp M := by
+  intro h
+  simp [pn]
+  induction h with
+  | comm p q P Q hneq => {
+    simp [supp, parallel, atomic, fin.complete]
+    apply Finset.subset_iff.mpr
+    intro r r_mem
+    simp [fin.complete]
+    by_cases c₁ : p = r
+    {
+      simp [c₁]
+    }
+    {
+      simp [c₁]
+      simp at r_mem
+      apply r_mem.elim
+      {
+        intro h
+        exact (c₁ (id h.symm)).elim
+      }
+      {
+        intro h
+        exact h.symm
+      }
+    }
+  }
+  | par M₁ M₂ M₃ μ' h₁ h₂ M₁_steps ih => {
+    apply Finset.subset_iff.mpr
+    intro r r_mem
+    simp [supp, parallel, fin.complete]
+    have := Finset.subset_iff.mp ih
+    have x₁ := this r_mem
+    have := SimpleNet.mem_supp_running x₁
+    simp [this]
+  }
+
+theorem soundness {C : SimpleChor α} {μ : (α × α)} {N : SimpleNet α} : SimpleNet.Step (endpoint_projection C) μ N → ∃ (C' : SimpleChor α), SimpleChor.Step C μ C' ∧ N = endpoint_projection C' := by
+  intro epp_C_steps
+  induction C with
+  | done => {
+    -- EPP of done cannot take a step
+    generalize h : endpoint_projection (α := α) SimpleChor.done = x at epp_C_steps
+    cases epp_C_steps with
+    | comm p q P Q neq => {
+      exfalso
+      have := congrFun h p
+      simp [endpoint_projection, process_projection, SimpleNet.atomic, SimpleNet.parallel, fin.complete, SimpleNet.supp] at this
+    }
+    | par M N N' μ' d₁ d₂ M_steps => {
+      exfalso
+      obtain ⟨p, q⟩ := μ
+      have := SimpleNet.step_mem M_steps
+      have p_mem : p ∈ SimpleNet.supp M := by
+        simp [pn] at this
+        rename_i inst
+        apply this
+        simp_all only [Finset.mem_insert, Finset.mem_singleton, true_or]
+      have := congrFun h p
+      simp [SimpleNet.parallel] at this
+      simp [p_mem] at this
+      simp [endpoint_projection, process_projection] at this
+      have p_running := SimpleNet.mem_supp_running p_mem
+      exact p_running (this.symm)
+    }
+  }
+  | comm p q C₁ hneq ih => {
+    have h₁ : endpoint_projection (p ~> q ; C₁) = SimpleNet.parallel
+      (((endpoint_projection C₁).remove p).remove q)
+      (SimpleNet.parallel
+        (SimpleNet.atomic p (SimpleProc.send q (endpoint_projection C₁ p)))
+        (SimpleNet.atomic q (SimpleProc.receive p (endpoint_projection C₁ q)))
+        (by {
+          apply SimpleNet.disjoint_atomics
+          exact hneq
+        })
+      )
+      (by {
+        apply disjoint_remove₂_atomic₂ ; exact hneq
+      })
+      := by
+        funext r
+        simp [endpoint_projection, process_projection, SimpleNet.parallel, SimpleNet.supp, SimpleNet.remove, SimpleNet.atomic, fin.complete]
+        by_cases c₁ : r = p
+        {
+          simp [c₁]
+        }
+        simp [c₁]
+        by_cases c₂ : r = q
+        {
+          simp [c₂, hneq]
+        }
+        simp [c₁, c₂, Ne.symm]
+        by_cases c₃ : process_projection C₁ r = SimpleProc.done
+        all_goals simp [c₃]
+
+    sorry
+    -- by_cases c : μ = (p, q)
+    -- {
+    --   -- case 2.1
+    --   simp [c]
+    --   exists C₁
+    --   apply And.intro
+    --   {
+    --     apply SimpleChor.Step.comm
+    --     exact hneq
+    --   }
+    --   {
+    --     clear ih
+    --     generalize h : endpoint_projection (p ~> q ; C₁) = epp_C at epp_C_steps
+    --     rw [h] at h₁
+    --     clear h₁
+    --     have rem := epp_C_steps
+
+    --     cases epp_C_steps with
+    --     | comm p q P Q hneq => {
+    --       funext r
+    --       simp at c
+    --       have hp := c.left
+    --       have hq := c.right
+    --       subst hp hq
+    --       simp [SimpleNet.Step, SimpleNet.parallel, SimpleNet.supp, SimpleNet.atomic, fin.complete, endpoint_projection]
+    --       by_cases c₁ : p = r
+    --       {
+    --         simp [←c₁]
+    --         have hp := congrFun h p
+    --         simp [SimpleNet.parallel, SimpleNet.atomic, endpoint_projection, SimpleNet.supp, fin.complete, process_projection] at hp
+    --         rw [hp]
+    --         by_cases c₂ : P = SimpleProc.done
+    --         {
+    --           simp [c₂]
+    --           intro c
+    --           exact (hneq (id c.symm)).elim
+    --         }
+    --         {
+    --           simp [c₂]
+    --         }
+    --       }
+    --       by_cases c₂ : q = r
+    --       {
+    --         simp [←c₂, hneq]
+    --         have hq := congrFun h q
+    --         simp [SimpleNet.parallel, SimpleNet.atomic, endpoint_projection, SimpleNet.supp, fin.complete, process_projection, hneq, Ne.symm] at hq
+    --         exact id hq.symm
+    --       }
+    --       simp [c₁, c₂, Ne.symm]
+    --       have hr := congrFun h r
+    --       simp [SimpleNet.parallel, SimpleNet.atomic, endpoint_projection, SimpleNet.supp, fin.complete, process_projection, hneq, Ne.symm, c₁, c₂] at hr
+    --       exact id hr.symm
+    --     }
+    --     | par N N' M μ' d₁ d₂ N_steps => {
+    --       simp_all
+    --       sorry
+    --     }
+    --   }
+    -- }
+    -- {
+    --   -- case 2.2
+    --   have : Disjoint {p, q} (pn μ) := by
+    --     aesop
+    --   sorry
+
+    -- }
   }
