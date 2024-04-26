@@ -29,6 +29,19 @@ theorem SimpleNet.mem_supp_mem_elems {N : SimpleNet α} {p : α} : p ∈ supp N 
   simp [supp] at h
   exact h.left
 
+theorem SimpleNet.mem_supp_running_iff {N : SimpleNet α} {p : α} : p ∈ supp N ↔ N p ≠ SimpleProc.done := by
+  apply Iff.intro
+  {
+    intro p_mem
+    simp [supp, fin.complete] at p_mem
+    exact p_mem
+  }
+  {
+    intro p_running
+    simp [supp, fin.complete]
+    exact p_running
+  }
+
 theorem SimpleNet.mem_supp_running {N : SimpleNet α} {p : α} : p ∈ SimpleNet.supp N → N p ≠ SimpleProc.done := by
   intro h c
   unfold SimpleNet.supp at h
@@ -203,20 +216,26 @@ theorem SimpleNet.step_nmem_unchange {N N' : SimpleNet α} {μ : (α × α)} {r 
   intros N_steps r_nmem
   induction N_steps with
   | comm p q P Q hneq => {
-    simp [parallel, supp, atomic, r_nmem, fin.complete]
-    simp [pn] at r_nmem
-    have ⟨neq₁, neq₂⟩ := not_or.mp r_nmem
-    have neq₁' : p ≠ r := by intro c ; have := c.symm ; contradiction
-    have neq₂' : q ≠ r := by intro c ; have := c.symm ; contradiction
-    simp [neq₁, neq₂, neq₁', neq₂']
+    simp [parallel, supp, atomic, fin.complete]
+    simp [pn, not_or] at r_nmem
+    have := r_nmem.left
+    simp [r_nmem.left, r_nmem.right, Ne.symm]
   }
-  | par N N' M μ d₁ d₂ h₁ N_steps => {
-    simp at *
-    obtain ⟨p₁, p₂⟩ := μ
-    simp [*] at *
+  | par N N' M μ d₁ d₂ N_steps ih => {
+    apply ih at r_nmem
     simp [parallel, supp, fin.complete]
-    simp [pn] at r_nmem
-    by_cases N r = SimpleProc.done <;> simp [r_nmem, N_steps.symm]
+    by_cases c : N r = SimpleProc.done
+    {
+      simp [c]
+      rw [r_nmem] at c
+      simp [c]
+    }
+    {
+      simp [c]
+      rw [r_nmem] at c
+      simp [c]
+      exact r_nmem
+    }
   }
 
 def SimpleNet.remove (N: SimpleNet α) (p : α) : SimpleNet α :=
