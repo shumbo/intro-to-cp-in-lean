@@ -11,8 +11,8 @@ variable {α : Type} [DecidableEq α] [fin : Fintype α]
 
 inductive SimpleChor (α : Type) where
   | done : SimpleChor α
-  | comm (p : α) (q : α) (C : SimpleChor α) : SimpleChor α
-deriving Repr, DecidableEq
+  | comm (p : α) (q : α) (C : SimpleChor α) (hneq : p ≠ q := by simp [*]) : SimpleChor α
+deriving DecidableEq
 
 -- terminated choreography
 def SimpleChor.𝕆 : SimpleChor α := SimpleChor.done
@@ -20,7 +20,7 @@ def SimpleChor.𝕆 : SimpleChor α := SimpleChor.done
 notation:10 p " ~> " q " ; " C => SimpleChor.comm p q C
 
 -- Example 2.2
-#eval Name.buyer ~> Name.seller ; Name.seller ~> Name.buyer ; SimpleChor.done
+#check Name.buyer ~> Name.seller ; Name.seller ~> Name.buyer ; SimpleChor.done
 
 -- Exercise 2.1
 def ringProtocol := Name.alice ~> Name.bob ; Name.bob ~> Name.charlie ; Name.charlie ~> Name.alice ; SimpleChor.done
@@ -40,8 +40,8 @@ inductive Transition.Multi {S : Type} {L : Type} (t : Transition S L) : S → Li
 def pn (s : α × α) : Finset α := {s.fst, s.snd}
 
 inductive SimpleChor.Step : Transition (SimpleChor α) (α × α) where
-  | comm : ∀ (p q : α) (C : SimpleChor α), p ≠ q → Step (p ~> q ; C) (p, q) C
-  | delay : ∀ C μ C' (p q : α), p ≠ q → Step C μ C' → Disjoint {p, q} (pn μ) → Step (p ~> q ; C) μ (p ~> q ; C')
+  | comm : ∀ (p q : α) (C : SimpleChor α), (hneq : p ≠ q )→ Step (SimpleChor.comm p q C) (p, q) C
+  | delay : ∀ C μ C' (p q : α), (hneq : p ≠ q) → Step C μ C' → Disjoint {p, q} (pn μ) → Step (p ~> q ; C) μ (p ~> q ; C')
 
 -- Example 2.3
 example : SimpleChor.Step
