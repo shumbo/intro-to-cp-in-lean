@@ -64,6 +64,67 @@ theorem process_projection.nmem_unchange {C C' : SimpleChor α} {μ : (α × α)
 
 -- lemma
 
+lemma restrict_parallel₂ (N : SimpleNet α) (p q : α) (neq : p ≠ q) : SimpleNet.restrict (N) {p, q} = SimpleNet.parallel (SimpleNet.atomic p (N p)) (SimpleNet.atomic q (N q)) (by {
+  simp [SimpleNet.atomic, SimpleNet.supp]
+  apply Finset.disjoint_filter.mpr
+  simp [fin.complete]
+  intros _ x
+  exact (neq (id x.symm)).elim
+}) := by {
+  funext r
+  simp [SimpleNet.restrict]
+  by_cases c₁ : r ∈ ({p, q} : Finset α)
+  {
+    simp_all [c₁]
+    simp [SimpleNet.parallel, SimpleNet.supp, SimpleNet.atomic, fin.complete]
+    by_cases c₂ : p = r
+    {
+      simp_all
+      by_cases N r = SimpleProc.done <;> simp_all
+    }
+    {
+      simp_all
+      by_cases q = r
+      {
+        simp_all
+      }
+      {
+        simp_all
+        aesop
+      }
+    }
+  }
+  {
+    simp [not_or] at c₁
+    simp [c₁]
+    simp [SimpleNet.parallel, SimpleNet.supp, SimpleNet.atomic, fin.complete]
+    by_cases c₂ : p = r
+    {
+      simp_all
+    }
+    {
+      simp_all
+      by_cases q = r
+      {
+        simp_all
+      }
+
+      {
+        simp_all
+      }
+    }
+  }
+}
+
+lemma SimpleNet.parallel_subst_left (N M₁ M₂ : SimpleNet α) : (h : M₁ = M₂) → (d₁ : Disjoint N.supp M₁.supp) → SimpleNet.parallel N M₁ d₁ = SimpleNet.parallel N M₂ (by {
+  rw [h] at d₁
+  exact d₁
+}) := by
+  intro h d₁
+  funext name
+  simp [parallel]
+  rw [h]
+
 
 -- lemma 4.9
 
@@ -88,216 +149,114 @@ theorem completeness {C : SimpleChor α} {μ : (α × α)} {C' : SimpleChor α} 
   intros C_steps
   have rem := C_steps
   induction C_steps with
-  | comm p q C' => {
-    let C : SimpleChor α := p ~> q ; C'
-
-    let C_pq := (SimpleNet.parallel
-      (SimpleNet.atomic p (SimpleProc.send q (process_projection C' p)))
-      (SimpleNet.atomic q (SimpleProc.receive p (process_projection C' q)))
-      (by {
-        simp [SimpleNet.supp, SimpleNet.atomic]
-        apply Finset.disjoint_filter.mpr
-        cases C
-        {
-          rename_i p q neq
-          intro r _ h
-          rw [h] at neq
-          exact id (Ne.symm neq)
-        }
-        {
-          simp [fin.complete]
-          apply Ne.symm
-          assumption
-        }
-      })
-    )
-
-    let C_rest := (((endpoint_projection C).remove p).remove q)
-
-    let C₁ := SimpleNet.parallel
-      C_rest
-      C_pq
-      (by {
-        simp [SimpleNet.supp, SimpleNet.remove, SimpleNet.atomic, SimpleNet.parallel, fin.complete]
-        apply Finset.disjoint_filter.mpr
-        simp [fin.complete]
-        intros r h₁ h₂ h₃
-        simp [Ne.symm h₁]
-        exact ne_comm.mpr h₂
-      })
-
-    let C'_rest := ((endpoint_projection C').remove p).remove q
-
-    let C₂ := SimpleNet.parallel
-      C'_rest
-      C_pq
-      (by {
-        simp [SimpleNet.supp, SimpleNet.remove, SimpleNet.atomic, SimpleNet.parallel, fin.complete]
-        apply Finset.disjoint_filter.mpr
-        simp [fin.complete]
-        intros r h₁ h₂ h₃
-        simp [Ne.symm h₁]
-        exact ne_comm.mpr h₂
-      })
-
-    let C₃ := SimpleNet.parallel
-      C'_rest
-      (SimpleNet.parallel
-        (SimpleNet.atomic p (process_projection C' p))
-        (SimpleNet.atomic q (process_projection C' q))
+  | comm p q C' neq => {
+      have lhs :
+        endpoint_projection (p ~> q ; C')
+          =
+        SimpleNet.parallel
+          (((endpoint_projection C').remove p).remove q)
+          (SimpleNet.parallel
+            (SimpleNet.atomic p (SimpleProc.send q (process_projection C' p)))
+            (SimpleNet.atomic q (SimpleProc.receive p (process_projection C' q)))
+            (by apply SimpleNet.disjoint_atomics ; assumption)
+          )
+          (by {
+            apply disjoint_remove₂_atomic₂ ; assumption
+          })
+        := calc
+        _ = SimpleNet.parallel
+              (((endpoint_projection (p ~> q ; C')).remove p).remove q)
+              (SimpleNet.parallel
+                (SimpleNet.atomic p (SimpleProc.send q (process_projection C' p)))
+                (SimpleNet.atomic q (SimpleProc.receive p (process_projection C' q)))
+                (by apply SimpleNet.disjoint_atomics ; assumption)
+              )
+              (by {
+                apply disjoint_remove₂_atomic₂ ; assumption
+              }) := by {
+                funext r
+                simp [endpoint_projection, process_projection, SimpleNet.parallel, SimpleNet.supp, SimpleNet.remove, fin.complete, neq, SimpleNet.atomic]
+                by_cases c₁ : r = p
+                {
+                  simp [c₁]
+                }
+                simp [c₁]
+                by_cases c₂ : r = q
+                {
+                  simp [c₂, neq]
+                }
+                simp [c₂, c₁, Ne.symm]
+                by_cases c₃ : process_projection C' r = SimpleProc.done <;> simp [c₃]
+              }
+        _ = SimpleNet.parallel
+              (((endpoint_projection C').remove p).remove q)
+              (SimpleNet.parallel
+                (SimpleNet.atomic p (SimpleProc.send q (process_projection C' p)))
+                (SimpleNet.atomic q (SimpleProc.receive p (process_projection C' q)))
+                (by apply SimpleNet.disjoint_atomics ; assumption)
+              )
+              (by {
+                apply disjoint_remove₂_atomic₂ ; assumption
+              }) := by {
+                funext r
+                congr
+                funext r
+                simp [SimpleNet.remove, endpoint_projection, process_projection]
+                by_cases c₁ : r = q
+                { simp [c₁] }
+                simp [c₁]
+                by_cases c₂ : r = p
+                { simp [c₂] }
+                simp [c₂]
+              }
+      have rhs : SimpleNet.parallel
+        (((endpoint_projection C').remove p).remove q)
+        (SimpleNet.parallel
+          (SimpleNet.atomic p (process_projection C' p))
+          (SimpleNet.atomic q (process_projection C' q))
+          (by apply SimpleNet.disjoint_atomics ; assumption)
+        )
         (by {
-          simp [SimpleNet.supp, SimpleNet.atomic, process_projection]
-          apply Finset.disjoint_filter.mpr
-          simp [fin.complete]
-          intro c heq
-          have := heq.symm
-          contradiction
+          apply disjoint_remove₂_atomic₂ ; assumption
         })
-      )
-      (by {
-        simp [SimpleNet.supp, SimpleNet.remove, SimpleNet.atomic, SimpleNet.parallel, fin.complete]
-        apply Finset.disjoint_filter.mpr
-        simp [fin.complete]
-        intros r h₁ h₂ h₃
-        simp [Ne.symm h₁]
-        intro c
-        exact (h₂ (id c.symm)).elim
-      })
-
-    let C₃' := SimpleNet.parallel
-      (SimpleNet.parallel
-        (SimpleNet.atomic p (process_projection C' p))
-        (SimpleNet.atomic q (process_projection C' q))
-        (by {
-          simp [SimpleNet.supp, SimpleNet.atomic, process_projection]
-          apply Finset.disjoint_filter.mpr
-          simp [fin.complete]
-          intro c heq
-          have := heq.symm
-          contradiction
-        })
-      )
-      C'_rest
-      (by {
-        simp [SimpleNet.supp, SimpleNet.remove, SimpleNet.atomic, SimpleNet.parallel, fin.complete]
-        apply Finset.disjoint_filter.mpr
-        simp [fin.complete]
-        intros r h₁ h₂ h₃
-        simp [Ne.symm h₂, Ne.symm h₃] at h₁
-      })
-
-    have eq₃ : C₃ = C₃' := by
-      apply SimpleNet.comm
-
-    have h₁ : endpoint_projection C = C₁ := by
-      funext r
-      simp [endpoint_projection, process_projection]
-      have neq : p ≠ q := by
-        cases C
-        assumption
-        assumption
-      by_cases h₁ : r = p
-      {
-        simp [h₁, SimpleNet.parallel, SimpleNet.supp, fin.complete, SimpleNet.atomic, SimpleNet.remove]
-      }
-      simp [h₁]
-      by_cases h₂ : r = q
-      {
-        simp [h₂, SimpleNet.parallel, SimpleNet.supp, fin.complete, SimpleNet.atomic, SimpleNet.remove, neq]
-      }
-      simp [h₂]
-      simp [SimpleNet.parallel, SimpleNet.supp, fin.complete, SimpleNet.remove, h₁, h₂, SimpleNet.atomic, Ne.symm, h₁, h₂, endpoint_projection, process_projection]
-      by_cases h₃: process_projection C' r = SimpleProc.done
-      simp [h₃]
-      simp [h₃]
-
-    have h₂ : ((endpoint_projection C).remove p).remove q = ((endpoint_projection C').remove p).remove q := by
-      funext r
-      by_cases c₁ : p = r
-      {
-        simp [SimpleNet.remove, c₁]
-      }
-      by_cases c₂ : q = r
-      {
-        simp [SimpleNet.remove, c₂]
-      }
-      simp [endpoint_projection]
-      have : endpoint_projection C r = endpoint_projection C' r := by
-        apply process_projection.nmem_unchange
+        =
+        endpoint_projection C' := by
+          funext r
+          simp [SimpleNet.parallel, SimpleNet.supp, SimpleNet.atomic, endpoint_projection, process_projection, fin.complete, SimpleNet.remove]
+          by_cases c₁ : p = r
+          {
+            simp [c₁]
+            intro h
+            by_cases c₂ : q = r
+            { simp [c₂] }
+            { simp [c₂, h.symm] }
+          }
+          {
+            simp [c₁]
+            by_cases c₂ : q = r
+            { simp [c₂, Ne.symm] }
+            {
+              simp [c₁, c₂, Ne.symm]
+              intro h
+              exact h.symm
+            }
+          }
+      rw [lhs]
+      clear lhs
+      nth_rewrite 3 [←rhs]
+      conv => {
+        congr
         {
-          apply rem
+          rw [SimpleNet.comm]
         }
+        {}
         {
-          simp [pn, not_or]
-          apply And.intro
-          exact Ne.symm c₁
-          exact Ne.symm c₂
+          rw [SimpleNet.comm]
         }
-      simp at this
-      simp [SimpleNet.remove, Ne.symm c₁, Ne.symm c₂]
-      exact this
-
-    have h₂' : C₁ = C₂ := by
-      simp at h₂
-      simp
-      funext r
-      simp [h₂, SimpleNet.parallel]
-
-    have fst : endpoint_projection C = C₂ := by simp [h₁, h₂']
-
-    let C'_pq_stepped := (SimpleNet.parallel
-      (SimpleNet.atomic p (process_projection C' p))
-      (SimpleNet.atomic q (process_projection C' q))
-      (by {
-        simp [SimpleNet.supp, SimpleNet.atomic]
-        apply Finset.disjoint_filter.mpr
-        simp [fin.complete]
-        intro h₁ h₂
-        have := h₂.symm
-        contradiction
-      })
-    )
-
-    have h_com : SimpleNet.Step C_pq (p, q) C'_pq_stepped := by
-      simp
-      apply SimpleNet.Step.comm p q
-      assumption
-
-    have : SimpleNet.Step C₂ (p, q) C₃ := by
-      rw [eq₃]
-      simp
-      rw [SimpleNet.comm]
+      }
       apply SimpleNet.Step.par
-      apply h_com
-
-    rw [←fst] at this
-
-    have lst : C₃ = endpoint_projection C' := by
-      funext r
-      simp [endpoint_projection, process_projection]
-      have : p ≠ q := by assumption
-      by_cases h₁ : r = p
-      {
-        simp [h₁, this.symm, SimpleNet.parallel, SimpleNet.supp, fin.complete, SimpleNet.atomic, SimpleNet.remove]
-        intro x ; exact x.symm
-      }
-      by_cases h₂ : r = q
-      {
-        simp [h₂, this, SimpleNet.parallel, SimpleNet.supp, fin.complete, SimpleNet.atomic, SimpleNet.remove]
-      }
-      simp [h₁, h₂, Ne.symm h₁, Ne.symm h₂, this.symm, SimpleNet.parallel, SimpleNet.supp, fin.complete, SimpleNet.atomic, SimpleNet.remove]
-      by_cases c₃ : endpoint_projection C' r = SimpleProc.done
-      {
-        simp [c₃.symm]
-        simp [endpoint_projection]
-      }
-      {
-        simp [c₃, endpoint_projection]
-        intro x ; exact x.symm
-      }
-
-    rw [←lst]
-    assumption
+      apply SimpleNet.Step.comm
+      exact neq
   }
   | delay C₁ μ' C₂ p q neq C₁_steps d ih => {
     let N₂ := SimpleNet.parallel
